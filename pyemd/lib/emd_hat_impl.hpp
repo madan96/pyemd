@@ -38,21 +38,21 @@ NUM_T emd_hat_gd_metric<NUM_T,FLOW_TYPE>::operator()(const std::vector<NUM_T>& P
     std::vector<NUM_T> Q= Qc;
     
     // Assuming metric property we can pre-flow 0-cost edges
-    {for (NODE_T i=0; i<P.size(); ++i) {
-            if (P[i]<Q[i]) {
-                if (FLOW_TYPE!=NO_FLOW) {
-                    ((*F)[i][i])= P[i];
-                }
-                Q[i]-= P[i];
-                P[i]= 0;
-            } else {
-                if (FLOW_TYPE!=NO_FLOW) {
-                    ((*F)[i][i])= Q[i];
-                }
-                P[i]-= Q[i];
-                Q[i]= 0;
-            }
-    }}
+    // {for (NODE_T i=0; i<P.size(); ++i) {
+    //         if (P[i]<Q[i]) {
+    //             if (FLOW_TYPE!=NO_FLOW) {
+    //                 ((*F)[i][i])= P[i];
+    //             }
+    //             Q[i]-= P[i];
+    //             P[i]= 0;
+    //         } else {
+    //             if (FLOW_TYPE!=NO_FLOW) {
+    //                 ((*F)[i][i])= Q[i];
+    //             }
+    //             P[i]-= Q[i];
+    //             Q[i]= 0;
+    //         }
+    // }}
 
     return emd_hat_impl<NUM_T,FLOW_TYPE>()(Pc,Qc,P,Q,C,extra_mass_penalty,F);
     
@@ -96,7 +96,8 @@ struct emd_hat_impl_integral_types {
 
     //-------------------------------------------------------
     NODE_T N= Pc.size();
-    assert(Qc.size()==N);
+    NODE_T M = Qc.size();
+    // assert(Qc.size()==N);
 
     // Ensuring that the supplier - P, have more mass.
     std::vector<NUM_T> P;
@@ -106,7 +107,7 @@ struct emd_hat_impl_integral_types {
     NUM_T sum_P= 0;
     NUM_T sum_Q= 0;
     {for (NODE_T i=0; i<N; ++i) sum_P+= Pc[i];}
-    {for (NODE_T i=0; i<N; ++i) sum_Q+= Qc[i];}
+    {for (NODE_T i=0; i<M; ++i) sum_Q+= Qc[i];}
     bool needToSwapFlow= false;
     if (sum_Q>sum_P) {
         needToSwapFlow= true;
@@ -114,7 +115,7 @@ struct emd_hat_impl_integral_types {
         Q= Pc;
         // transpose C
         for (NODE_T i=0; i<N; ++i) {
-            for (NODE_T j=0; j<N; ++j) {
+            for (NODE_T j=0; j<M; ++j) {
                 C[i][j]= Cc[j][i];
             }
         }
@@ -127,13 +128,14 @@ struct emd_hat_impl_integral_types {
     //if (needToSwapFlow) cout << "needToSwapFlow" << endl;
     
     // creating the b vector that contains all vertexes
-    std::vector<NUM_T> b(2*N+2);
-    const NODE_T THRESHOLD_NODE= 2*N;
-    const NODE_T ARTIFICIAL_NODE= 2*N+1; // need to be last !
+    std::vector<NUM_T> b(N+M+2);
+    const NODE_T THRESHOLD_NODE= N+M;
+    const NODE_T ARTIFICIAL_NODE= M+N+1; // need to be last !
     {for (NODE_T i=0; i<N; ++i) {
         b[i]= P[i];
     }}
-    {for (NODE_T i=N; i<2*N; ++i) {
+    //TODO: Check implementation here
+    {for (NODE_T i=N; i<M+N; ++i) {
         b[i]= (Q[i-N]);
     }}
     
@@ -149,7 +151,7 @@ struct emd_hat_impl_integral_types {
     //-------------------------------------------------------
     NUM_T maxC= 0;
     {for (NODE_T i=0; i<N; ++i) {
-        {for (NODE_T j=0; j<N; ++j) {
+        {for (NODE_T j=0; j<M; ++j) {
                 assert(C[i][j]>=0);
                 if ( C[i][j]>maxC ) maxC= C[i][j];
         }}
@@ -171,7 +173,7 @@ struct emd_hat_impl_integral_types {
     std::vector< std::list< edge<NUM_T> > > c(b.size());
     {for (NODE_T i=0; i<N; ++i) {
         if (b[i]==0) continue;
-        {for (NODE_T j=0; j<N; ++j) {
+        {for (NODE_T j=0; j<M; ++j) {
             if (b[j+N]==0) continue;
             if (C[i][j]==maxC) continue;
             c[i].push_back( edge<NUM_T>(j+N , C[i][j]) );
@@ -181,7 +183,7 @@ struct emd_hat_impl_integral_types {
      // checking which are not isolated
      {for (NODE_T i=0; i<N; ++i) {
         if (b[i]==0) continue;
-        {for (NODE_T j=0; j<N; ++j) {
+        {for (NODE_T j=0; j<M; ++j) {
             if (b[j+N]==0) continue;
             if (C[i][j]==maxC) continue;
             sources_that_flow_not_only_to_thresh.insert(i);
@@ -189,8 +191,9 @@ struct emd_hat_impl_integral_types {
         }} // j
     }}// i
 
+    // TODO: Checki implementation here
     // converting all sinks to negative
-      {for (NODE_T i=N; i<2*N; ++i) {
+      {for (NODE_T i=N; i<M+N; ++i) {
               b[i]= -b[i];
     }}
     
@@ -201,7 +204,7 @@ struct emd_hat_impl_integral_types {
     {for (NODE_T i=0; i<N; ++i) {
             c[i].push_back( edge<NUM_T>(THRESHOLD_NODE, 0) );
     }}
-    {for (NODE_T j=0; j<N; ++j) {
+    {for (NODE_T j=0; j<M; ++j) {
             c[THRESHOLD_NODE].push_back( edge<NUM_T>(j+N, maxC) );
     }} 
     
@@ -228,7 +231,7 @@ struct emd_hat_impl_integral_types {
     std::vector<int> nodes_new_names(b.size(),REMOVE_NODE_FLAG);
     std::vector<int> nodes_old_names;
     nodes_old_names.reserve(b.size());
-    {for (NODE_T i=0; i<N*2; ++i) {
+    {for (NODE_T i=0; i<M+N; ++i) {
             if (b[i]!=0) {
              if (sources_that_flow_not_only_to_thresh.find(i)!=sources_that_flow_not_only_to_thresh.end()|| 
                 sinks_that_get_flow_not_only_from_thresh.find(i)!=sinks_that_get_flow_not_only_from_thresh.end()) {
@@ -417,12 +420,13 @@ struct emd_hat_impl<double,FLOW_TYPE> {
 
     // Constructing the input
     const NODE_T N= P.size();
+    const NODE_T M= Q.size();
     std::vector<CONVERT_TO_T> iPOrig(N);
-    std::vector<CONVERT_TO_T> iQOrig(N);
+    std::vector<CONVERT_TO_T> iQOrig(M);
     std::vector<CONVERT_TO_T> iP(N);
-    std::vector<CONVERT_TO_T> iQ(N);
-    std::vector< std::vector<CONVERT_TO_T> > iC(N, std::vector<CONVERT_TO_T>(N) );
-    std::vector< std::vector<CONVERT_TO_T> > iF(N, std::vector<CONVERT_TO_T>(N) );
+    std::vector<CONVERT_TO_T> iQ(M);
+    std::vector< std::vector<CONVERT_TO_T> > iC(N, std::vector<CONVERT_TO_T>(M) );
+    std::vector< std::vector<CONVERT_TO_T> > iF(N, std::vector<CONVERT_TO_T>(M) );
 
     // Converting to CONVERT_TO_T
     double sumP= 0.0;
@@ -430,8 +434,8 @@ struct emd_hat_impl<double,FLOW_TYPE> {
     double maxC= C[0][0];
     for (NODE_T i= 0; i<N; ++i) {
         sumP+= POrig[i];
-        sumQ+= QOrig[i];
-        for (NODE_T j= 0; j<N; ++j) {
+        for (NODE_T j= 0; j<M; ++j) {
+            sumQ+= QOrig[j];
             if (C[i][j]>maxC) maxC= C[i][j];
         }
     }
@@ -441,10 +445,10 @@ struct emd_hat_impl<double,FLOW_TYPE> {
     double CnormFactor= MULT_FACTOR/maxC;
     for (NODE_T i= 0; i<N; ++i) {
         iPOrig[i]= static_cast<CONVERT_TO_T>(floor(POrig[i]*PQnormFactor+0.5));
-        iQOrig[i]= static_cast<CONVERT_TO_T>(floor(QOrig[i]*PQnormFactor+0.5));
         iP[i]= static_cast<CONVERT_TO_T>(floor(P[i]*PQnormFactor+0.5));
-        iQ[i]= static_cast<CONVERT_TO_T>(floor(Q[i]*PQnormFactor+0.5));
-        for (NODE_T j= 0; j<N; ++j) {
+        for (NODE_T j= 0; j<M; ++j) {
+            iQOrig[j]= static_cast<CONVERT_TO_T>(floor(QOrig[i]*PQnormFactor+0.5));
+            iQ[j]= static_cast<CONVERT_TO_T>(floor(Q[i]*PQnormFactor+0.5));
             iC[i][j]= static_cast<CONVERT_TO_T>(floor(C[i][j]*CnormFactor+0.5));
             if (FLOW_TYPE!=NO_FLOW) {
                 iF[i][j]= static_cast<CONVERT_TO_T>(floor(((*F)[i][j])*PQnormFactor+0.5));
@@ -465,7 +469,7 @@ struct emd_hat_impl<double,FLOW_TYPE> {
     // converting flow to double
     if (FLOW_TYPE!=NO_FLOW) {
         for (NODE_T i= 0; i<N; ++i) {
-            for (NODE_T j= 0; j<N; ++j) {
+            for (NODE_T j= 0; j<M; ++j) {
                 (*F)[i][j]= (iF[i][j]/PQnormFactor);
             }
         }
