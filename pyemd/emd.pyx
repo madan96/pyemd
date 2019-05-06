@@ -8,7 +8,7 @@ from pkg_resources import parse_version
 from libcpp.pair cimport pair
 from libcpp.vector cimport vector
 import cython
-
+import math
 # Import both NumPy and the Cython declarations for NumPy
 import numpy as np
 cimport numpy as np
@@ -84,6 +84,18 @@ def emd(np.ndarray[np.float64_t, ndim=1, mode="c"] first_histogram,
         of rows or columns of the distance matrix, or if the histograms aren't
         the same length.
     """
+    
+    add_N = int(math.fabs(first_histogram.shape[0] - second_histogram.shape[0]))
+    additional = np.zeros((add_N)).astype(np.float64)
+    maxD = np.max(distance_matrix)
+    if (first_histogram.shape[0] < second_histogram.shape[0]):
+        first_histogram = np.concatenate((first_histogram, additional))
+        dist_temp = np.ones((add_N, second_histogram.shape[0])).astype(np.float64) * maxD
+        distance_matrix = np.concatenate((distance_matrix, dist_temp), axis=0)
+    elif (first_histogram.shape[0] > second_histogram.shape[0]):
+        second_histogram = np.concatenate((second_histogram, additional))
+        dist_temp = np.ones((first_histogram.shape[0], add_N)).astype(np.float64) * maxD
+        distance_matrix = np.concatenate((distance_matrix, dist_temp), axis=1)
     _validate_emd_input(first_histogram, second_histogram, distance_matrix)
     return emd_hat_gd_metric_double(first_histogram,
                                     second_histogram,
@@ -222,6 +234,8 @@ def emd_samples(first_array,
     # Cast to C++ long
     first_histogram = first_histogram.astype(np.float64)
     second_histogram = second_histogram.astype(np.float64)
+    print ("First: ", first_histogram.shape)
+    print ("Second: ", second_histogram.shape)
     # Normalize histograms to represent fraction of dataset in each bin
     if normalized:
         first_histogram = first_histogram / np.sum(first_histogram)
@@ -230,7 +244,10 @@ def emd_samples(first_array,
     bin_locations = np.mean([bin_edges[:-1], bin_edges[1:]], axis=0)
     if distance == 'euclidean':
         distance = euclidean_pairwise_distance_matrix
+    print (bin_locations)
     distance_matrix = distance(bin_locations)
+    print (distance_matrix)
+    print (distance_matrix.shape)
     # Validate distance matrix
     if len(distance_matrix) != len(distance_matrix[0]):
         raise ValueError(
